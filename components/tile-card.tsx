@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { X, GripVertical, Edit2, Check } from "lucide-react"
-import type { Tile } from "@/lib/dummy-data"
+import type { Tile } from "@/lib/types"
 import { cn } from "@/lib/utils"
 
 interface TileCardProps {
@@ -22,8 +22,9 @@ interface TileCardProps {
 
 export function TileCard({ tile, onDelete, onUpdate, editable = false, className }: TileCardProps) {
   const [isEditingCaption, setIsEditingCaption] = useState(false)
-  const [caption, setCaption] = useState(tile.caption)
+  const [caption, setCaption] = useState(tile.caption || "")
   const [tagInput, setTagInput] = useState("")
+  const tags = Array.isArray(tile.tags) ? tile.tags : []
 
   const handleSaveCaption = () => {
     onUpdate?.({ ...tile, caption })
@@ -32,14 +33,14 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
 
   const handleAddTag = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && tagInput.trim()) {
-      const newTags = [...tile.tags, tagInput.trim().toLowerCase()]
+      const newTags = [...tags, tagInput.trim().toLowerCase()]
       onUpdate?.({ ...tile, tags: newTags })
       setTagInput("")
     }
   }
 
   const handleRemoveTag = (tagToRemove: string) => {
-    const newTags = tile.tags.filter((tag) => tag !== tagToRemove)
+    const newTags = tags.filter((tag) => tag !== tagToRemove)
     onUpdate?.({ ...tile, tags: newTags })
   }
 
@@ -108,7 +109,7 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
         )}
 
         <div className="flex flex-wrap gap-1">
-          {tile.tags.map((tag) => (
+          {tags.map((tag) => (
             <Badge
               key={tag}
               variant="secondary"

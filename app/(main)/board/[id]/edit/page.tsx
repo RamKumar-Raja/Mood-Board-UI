@@ -1,7 +1,8 @@
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +18,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { getMoodboardById, dummyActivityLog, type Tile } from "@/lib/dummy-data"
+import { boardService, tileService, uploadService, activityLogService } from "@/lib/api-services"
+import type { Board, Tile, ActivityLog as ActivityLogType } from "@/lib/types"
 import {
   ArrowLeft,
   Upload,
@@ -32,58 +34,170 @@ import {
   Copy,
   ImagePlus,
 } from "lucide-react"
-import { notFound } from "next/navigation"
+import { toast } from "react-hot-toast"
 import { Label } from "@/components/ui/label"
 
 export default function EditMoodboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
-  const moodboard = getMoodboardById(id)
-
-  if (!moodboard) {
-    notFound()
-  }
-
-  const [tiles, setTiles] = useState<Tile[]>(moodboard.tiles)
+  const router = useRouter()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  const [moodboard, setMoodboard] = useState<Board | null>(null)
+  const [tiles, setTiles] = useState<Tile[]>([])
+  const [activityLogs, setActivityLogs] = useState<ActivityLogType[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
   const [imageUrl, setImageUrl] = useState("")
   const [copied, setCopied] = useState(false)
   const [isUrlDialogOpen, setIsUrlDialogOpen] = useState(false)
 
-  const handleDeleteTile = (tileId: string) => {
-    setTiles(tiles.filter((t) => t.id !== tileId))
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        const [board, logs] = await Promise.all([
+          boardService.getById(id),
+          activityLogService.getLogs(id, 1, 20).catch(() => ({ logs: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } }))
+        ])
+        setMoodboard(board)
+        setTiles(board.tiles || [])
+        setActivityLogs(logs.logs)
+      } catch (error: any) {
+        toast.error(error?.response?.data?.error || "Failed to load board")
+        if (error?.response?.status === 401) {
+          router.push("/login")
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [id, router])
+
+  const handleDeleteTile = async (tileId: string) => {
+    if (!moodboard) return
+    try {
+      await tileService.delete(moodboard.id, tileId)
+      setTiles(tiles.filter((t) => t.id !== tileId))
+      toast.success("Tile deleted")
+      // Refresh activity logs
+      const logs = await activityLogService.getLogs(id, 1, 20)
+      setActivityLogs(logs.logs)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Failed to delete tile")
+    }
   }
 
-  const handleUpdateTile = (updatedTile: Tile) => {
-    setTiles(tiles.map((t) => (t.id === updatedTile.id ? updatedTile : t)))
+  const handleUpdateTile = async (updatedTile: Tile) => {
+    if (!moodboard) return
+    try {
+      const saved = await tileService.update(moodboard.id, updatedTile.id, {
+        caption: updatedTile.caption || undefined,
+        tags: updatedTile.tags || undefined,
+        positionX: updatedTile.positionX,
+        positionY: updatedTile.positionY,
+        width: updatedTile.width,
+        height: updatedTile.height,
+      })
+      setTiles(tiles.map((t) => (t.id === updatedTile.id ? saved : t)))
+      // Refresh activity logs
+      const logs = await activityLogService.getLogs(id, 1, 20)
+      setActivityLogs(logs.logs)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Failed to update tile")
+    }
   }
 
-  const handleAddByUrl = () => {
-    if (imageUrl.trim()) {
-      const newTile: Tile = {
-        id: `tile-${Date.now()}`,
+  const handleAddByUrl = async () => {
+    if (!moodboard || !imageUrl.trim()) return
+    try {
+      setIsUploading(true)
+      const newTile = await tileService.create(moodboard.id, {
         imageUrl: imageUrl.trim(),
         caption: "",
         tags: [],
-      }
+      })
       setTiles([...tiles, newTile])
       setImageUrl("")
       setIsUrlDialogOpen(false)
+      toast.success("Tile added successfully")
+      // Refresh activity logs
+      const logs = await activityLogService.getLogs(id, 1, 20)
+      setActivityLogs(logs.logs)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Failed to add tile")
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!moodboard || !e.target.files?.[0]) return
+    const file = e.target.files[0]
+    try {
+      setIsUploading(true)
+      const { url } = await uploadService.uploadImage(file)
+      const newTile = await tileService.create(moodboard.id, {
+        imageUrl: url,
+        caption: "",
+        tags: [],
+      })
+      setTiles([...tiles, newTile])
+      toast.success("Image uploaded successfully")
+      // Refresh activity logs
+      const logs = await activityLogService.getLogs(id, 1, 20)
+      setActivityLogs(logs.logs)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Failed to upload image")
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ""
+      }
     }
   }
 
   const handleSave = async () => {
+    // All changes are saved automatically, this is just for UI feedback
     setIsSaving(true)
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    await new Promise((resolve) => setTimeout(resolve, 500))
     setIsSaving(false)
+    toast.success("All changes saved")
   }
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/board/${id}`)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    if (moodboard) {
+      const shareUrl = `${window.location.origin}/share/${moodboard.shareId}`
+      navigator.clipboard.writeText(shareUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+      toast.success("Share link copied!")
+    }
   }
 
-  const shareUrl = typeof window !== "undefined" ? `${window.location.origin}/board/${id}` : ""
+  const shareUrl = moodboard ? `${window.location.origin}/share/${moodboard.shareId}` : ""
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!moodboard) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-semibold mb-2">Board not found</h2>
+          <Link href="/dashboard">
+            <Button>Go to Dashboard</Button>
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -124,8 +238,25 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
 
             <div className="flex items-center gap-2">
               {/* Upload Button */}
-              <Button variant="outline" size="sm" className="gap-2 bg-transparent">
-                <Upload className="h-4 w-4" />
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="gap-2 bg-transparent"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
                 <span className="hidden sm:inline">Upload</span>
               </Button>
 
@@ -157,8 +288,12 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
                     <Button variant="outline" onClick={() => setIsUrlDialogOpen(false)}>
                       Cancel
                     </Button>
-                    <Button onClick={handleAddByUrl} disabled={!imageUrl.trim()}>
-                      <ImagePlus className="h-4 w-4 mr-2" />
+                    <Button onClick={handleAddByUrl} disabled={!imageUrl.trim() || isUploading}>
+                      {isUploading ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <ImagePlus className="h-4 w-4 mr-2" />
+                      )}
                       Add Image
                     </Button>
                   </DialogFooter>
@@ -195,7 +330,7 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
                   </Button>
                 </SheetTrigger>
                 <SheetContent side="right" className="w-80 p-0">
-                  <ActivityLog items={dummyActivityLog} />
+                  <ActivityLog items={activityLogs} />
                 </SheetContent>
               </Sheet>
 
@@ -242,7 +377,7 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
 
       {/* Activity Log Sidebar (Desktop) */}
       <aside className="hidden lg:block w-80 border-l border-border bg-card">
-        <ActivityLog items={dummyActivityLog} />
+        <ActivityLog items={activityLogs} />
       </aside>
     </div>
   )

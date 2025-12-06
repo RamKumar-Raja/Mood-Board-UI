@@ -9,46 +9,31 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { TileCard } from "@/components/tile-card"
 import { boardService } from "@/lib/api-services"
 import type { Board, User } from "@/lib/types"
-import { ArrowLeft, Globe, Lock, Calendar, Edit, Share2, Loader2, Check, Copy } from "lucide-react"
+import { ArrowLeft, Globe, Calendar, Loader2 } from "lucide-react"
 import { formatDistanceToNow, format } from "date-fns"
 import { toast } from "react-hot-toast"
 
-export default function PublicMoodboardPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
+export default function ShareBoardPage({ params }: { params: Promise<{ shareId: string }> }) {
+  const { shareId } = use(params)
   const router = useRouter()
-  const [moodboard, setMoodboard] = useState<Board | null>(null)
-  const [user, setUser] = useState<User | null>(null)
+  const [moodboard, setMoodboard] = useState<(Board & { user: User }) | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const fetchBoard = async () => {
       try {
         setIsLoading(true)
-        const board = await boardService.getById(id)
+        const board = await boardService.getByShareId(shareId)
         setMoodboard(board)
-        // User info would come from the board if we include it in the response
       } catch (error: any) {
-        toast.error(error?.response?.data?.error || "Failed to load board")
-        if (error?.response?.status === 401) {
-          router.push("/login")
-        }
+        toast.error(error?.response?.data?.error || "Board not found or is private")
+        router.push("/explore")
       } finally {
         setIsLoading(false)
       }
     }
     fetchBoard()
-  }, [id, router])
-
-  const handleCopyLink = () => {
-    if (moodboard) {
-      const shareUrl = `${window.location.origin}/share/${moodboard.shareId}`
-      navigator.clipboard.writeText(shareUrl)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-      toast.success("Share link copied!")
-    }
-  }
+  }, [shareId, router])
 
   if (isLoading) {
     return (
@@ -63,9 +48,9 @@ export default function PublicMoodboardPage({ params }: { params: Promise<{ id: 
       <div className="container mx-auto px-4 py-8">
         <div className="text-center py-16">
           <h2 className="text-2xl font-semibold mb-2">Board not found</h2>
-          <p className="text-muted-foreground mb-4">The board you're looking for doesn't exist or is private.</p>
-          <Link href="/dashboard">
-            <Button>Go to Dashboard</Button>
+          <p className="text-muted-foreground mb-4">This board doesn't exist or is private.</p>
+          <Link href="/explore">
+            <Button>Explore Public Boards</Button>
           </Link>
         </div>
       </div>
@@ -75,11 +60,11 @@ export default function PublicMoodboardPage({ params }: { params: Promise<{ id: 
   return (
     <div className="container mx-auto px-4 py-8">
       <Link
-        href="/dashboard"
+        href="/explore"
         className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back
+        Back to Explore
       </Link>
 
       {/* Header */}
@@ -88,41 +73,27 @@ export default function PublicMoodboardPage({ params }: { params: Promise<{ id: 
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-bold">{moodboard.title}</h1>
             <Badge variant="secondary" className="gap-1">
-              {moodboard.isPublic ? (
-                <>
-                  <Globe className="h-3 w-3" />
-                  Public
-                </>
-              ) : (
-                <>
-                  <Lock className="h-3 w-3" />
-                  Private
-                </>
-              )}
+              <Globe className="h-3 w-3" />
+              Public
             </Badge>
           </div>
-          <p className="text-muted-foreground max-w-2xl">{moodboard.description}</p>
+          <p className="text-muted-foreground max-w-2xl">{moodboard.description || ""}</p>
 
           <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+            {moodboard.user && (
+              <div className="flex items-center gap-2">
+                <Avatar className="h-6 w-6">
+                  <AvatarFallback>{moodboard.user.name?.charAt(0) || "U"}</AvatarFallback>
+                </Avatar>
+                <span>{moodboard.user.name || "Anonymous"}</span>
+              </div>
+            )}
             <div className="flex items-center gap-1">
               <Calendar className="h-4 w-4" />
               <span>Created {format(new Date(moodboard.createdAt), "MMM d, yyyy")}</span>
             </div>
             <span>Updated {formatDistanceToNow(new Date(moodboard.updatedAt), { addSuffix: true })}</span>
           </div>
-        </div>
-
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" className="gap-2 bg-transparent" onClick={handleCopyLink}>
-            {copied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
-            Share
-          </Button>
-          <Link href={`/board/${id}/edit`}>
-            <Button size="sm" className="gap-2">
-              <Edit className="h-4 w-4" />
-              Edit Board
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -141,3 +112,4 @@ export default function PublicMoodboardPage({ params }: { params: Promise<{ id: 
     </div>
   )
 }
+

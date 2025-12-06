@@ -29,7 +29,7 @@ export default function LoginPage() {
     try {
       await authService.login(email, password)
       toast.success("Welcome back!")
-      router.push("/dashboard")
+      router.push("/explore")
     } catch {
       toast.error("Invalid email or password")
     } finally {

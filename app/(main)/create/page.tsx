@@ -12,6 +12,8 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Globe, Lock, Loader2, Sparkles } from "lucide-react"
 import Link from "next/link"
+import { toast } from "react-hot-toast"
+import { boardService } from "@/lib/api-services"
 
 export default function CreateMoodboardPage() {
   const router = useRouter()
@@ -22,11 +24,25 @@ export default function CreateMoodboardPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!title.trim()) {
+      toast.error("Please enter a board title")
+      return
+    }
+
     setIsLoading(true)
-    // Simulate creation
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    setIsLoading(false)
-    router.push("/board/board-1/edit")
+    try {
+      const board = await boardService.create({
+        title: title.trim(),
+        description: description.trim() || undefined,
+        isPublic,
+      })
+      toast.success("Board created successfully!")
+      router.push(`/board/${board.id}/edit`)
+    } catch (error: any) {
+      toast.error(error?.response?.data?.error || "Failed to create board")
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (

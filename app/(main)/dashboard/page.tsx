@@ -1,23 +1,46 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { MoodboardCard } from "@/components/moodboard-card"
-import { getUserMoodboards, currentUser } from "@/lib/dummy-data"
-import { Plus, Search, LayoutGrid, List } from "lucide-react"
+import { boardService } from "@/lib/api-services"
+import type { Board } from "@/lib/types"
+import { Plus, Search, LayoutGrid, List, Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { toast } from "react-hot-toast"
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
-  const moodboards = getUserMoodboards(currentUser.id)
+  const [moodboards, setMoodboards] = useState<Board[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchBoards = async () => {
+      try {
+        setIsLoading(true)
+        const boards = await boardService.getAll()
+        setMoodboards(boards)
+      } catch (error: any) {
+        toast.error(error?.response?.data?.error || "Failed to load boards")
+        if (error?.response?.status === 401) {
+          router.push("/login")
+        }
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchBoards()
+  }, [router])
 
   const filteredMoodboards = moodboards.filter(
     (board) =>
       board.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      board.description.toLowerCase().includes(searchQuery.toLowerCase()),
+      (board.description || "").toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   return (
@@ -71,7 +94,11 @@ export default function DashboardPage() {
         </div>
 
         {/* Moodboards Grid */}
-        {filteredMoodboards.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredMoodboards.length > 0 ? (
           <div
             className={cn(
               "grid gap-6",

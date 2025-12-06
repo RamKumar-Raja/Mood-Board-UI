@@ -1,19 +1,37 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { MoodboardCard } from "@/components/moodboard-card"
-import { getPublicMoodboards } from "@/lib/dummy-data"
-import { Search, Compass } from "lucide-react"
+import { boardService } from "@/lib/api-services"
+import type { Board, User } from "@/lib/types"
+import { Search, Compass, Loader2 } from "lucide-react"
+import { toast } from "react-hot-toast"
 
 export default function ExplorePage() {
   const [searchQuery, setSearchQuery] = useState("")
-  const moodboards = getPublicMoodboards()
+  const [moodboards, setMoodboards] = useState<(Board & { user: User })[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchBoards = async () => {
+      try {
+        setIsLoading(true)
+        const boards = await boardService.getPublicBoards()
+        setMoodboards(boards)
+      } catch (error: any) {
+        toast.error(error?.response?.data?.error || "Failed to load public boards")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchBoards()
+  }, [])
 
   const filteredMoodboards = moodboards.filter(
     (board) =>
       board.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      board.description.toLowerCase().includes(searchQuery.toLowerCase()),
+      (board.description || "").toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   return (
@@ -42,7 +60,11 @@ export default function ExplorePage() {
         </div>
 
         {/* Moodboards Grid */}
-        {filteredMoodboards.length > 0 ? (
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : filteredMoodboards.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 mt-4">
             {filteredMoodboards.map((moodboard) => (
               <MoodboardCard key={moodboard.id} moodboard={moodboard} showVisibility={false} />
@@ -50,7 +72,9 @@ export default function ExplorePage() {
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-16 text-center">
-            <p className="text-muted-foreground">No moodboards found matching your search</p>
+            <p className="text-muted-foreground">
+              {searchQuery ? "No moodboards found matching your search" : "No public moodboards available yet"}
+            </p>
           </div>
         )}
       </div>

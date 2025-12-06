@@ -1,47 +1,46 @@
 export interface User {
   id: string
   email: string
-  name: string
-  created_at: string
+  name: string | null
+  createdAt: string
 }
 
 export interface Board {
   id: string
   userId: string
   title: string
-  description?: string
+  description?: string | null
   shareId: string
   isPublic: boolean
   createdAt: string
   updatedAt: string
   tiles?: Tile[]
+  activityLogs?: ActivityLog[]
 }
 
 export interface Tile {
   id: string
-  board_id: string
-  image_url: string
-  caption?: string
-  tags: string[]
-  position_x: number
-  position_y: number
+  boardId: string
+  imageUrl: string
+  caption?: string | null
+  tags: string[] | null
+  positionX: number
+  positionY: number
   width: number
   height: number
-  created_at: string
-  updated_at: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface ActivityLog {
   id: string
-  board_id: string
-  user_id: string
+  boardId: string
+  userId: string
   action: string
-  details?: string
-  created_at: string
+  createdAt: string
   user?: User
 }
 
 export interface AuthResponse {
-  token: string
   user: User
 }

@@ -2,26 +2,27 @@ import api from "./api"
 import type { AuthResponse, User } from "./types"
 
 export const authService = {
-  async signup(email: string, password: string, name: string): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/auth/signup", { email, password, name })
-    if (response.data.token) {
-      localStorage.setItem("token", response.data.token)
+  async signup(email: string, password: string, name: string): Promise<{ user: User }> {
+    const response = await api.post<{ user: User }>("/auth/signup", { email, password, name })
+    if (response.data.user?.id) {
+      localStorage.setItem("userId", response.data.user.id)
+      localStorage.setItem("user", JSON.stringify(response.data.user))
     }
     return response.data
   },
 
-  async login(email: string, password: string): Promise<AuthResponse> {
-    const response = await api.post<AuthResponse>("/auth/login", { email, password })
-    if (response.data.token) {
-      localStorage.setItem("token", response.data.token)
-      localStorage.setItem("user", JSON.stringify(response?.data?.user))
+  async login(email: string, password: string): Promise<{ user: User }> {
+    const response = await api.post<{ user: User }>("/auth/login", { email, password })
+    if (response.data.user?.id) {
+      localStorage.setItem("userId", response.data.user.id)
+      localStorage.setItem("user", JSON.stringify(response.data.user))
     }
     return response.data
   },
 
   async logout(): Promise<void> {
     await api.post("/auth/logout")
-    localStorage.removeItem("token")
+    localStorage.removeItem("userId")
     localStorage.removeItem("user")
   },
 
@@ -31,6 +32,6 @@ export const authService = {
   },
 
   isAuthenticated(): boolean {
-    return true
+    return !!localStorage.getItem("userId")
   },
 }

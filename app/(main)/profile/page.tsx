@@ -1,15 +1,66 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { MoodboardCard } from "@/components/moodboard-card"
-import { currentUser, getUserMoodboards } from "@/lib/dummy-data"
-import { Edit2, Calendar, Globe } from "lucide-react"
+import { boardService } from "@/lib/api-services"
+import type { Board, User } from "@/lib/types"
+import { Edit2, Calendar, Globe, Loader2 } from "lucide-react"
 import { format } from "date-fns"
+import { toast } from "react-hot-toast"
 
 export default function ProfilePage() {
-  const publicMoodboards = getUserMoodboards(currentUser.id).filter((b) => b.isPublic)
+  const [user, setUser] = useState<User | null>(null)
+  const [publicMoodboards, setPublicMoodboards] = useState<Board[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true)
+        const userStr = localStorage.getItem("user")
+        if (userStr) {
+          const userData = JSON.parse(userStr)
+          setUser(userData)
+        }
+        
+        const boards = await boardService.getAll()
+        const publicBoards = boards.filter((b) => b.isPublic)
+        setPublicMoodboards(publicBoards)
+      } catch (error: any) {
+        toast.error(error?.response?.data?.error || "Failed to load profile data")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+    fetchData()
+  }, [])
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-5xl flex items-center justify-center min-h-[60vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        <Card className="glass-card border-0">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-muted-foreground">Please login to view your profile</p>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const userName = user.name || "User"
+  const userInitial = userName.charAt(0).toUpperCase()
+  const joinedDate = user.createdAt ? new Date(user.createdAt) : new Date()
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -19,23 +70,20 @@ export default function ProfilePage() {
         <CardContent className="relative pt-0 pb-6">
           <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
             <Avatar className="h-24 w-24 border-4 border-background -mt-12 shadow-xl">
-              <AvatarImage src={currentUser.avatar || "/placeholder.svg"} alt={currentUser.name} />
-              <AvatarFallback className="text-2xl">{currentUser.name.charAt(0)}</AvatarFallback>
+              <AvatarFallback className="text-2xl">{userInitial}</AvatarFallback>
             </Avatar>
 
             <div className="flex-1 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h1 className="text-2xl font-bold">{currentUser.name}</h1>
-                  <p className="text-muted-foreground">{currentUser.email}</p>
+                  <h1 className="text-2xl font-bold">{userName}</h1>
+                  <p className="text-muted-foreground">{user.email}</p>
                 </div>
                 <Button variant="outline" size="sm" className="gap-2 w-fit bg-transparent">
                   <Edit2 className="h-4 w-4" />
                   Edit Profile
                 </Button>
               </div>
-
-              {currentUser.bio && <p className="text-sm text-foreground max-w-xl">{currentUser.bio}</p>}
 
               <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
                 <div className="flex items-center gap-1">
@@ -44,7 +92,7 @@ export default function ProfilePage() {
                 </div>
                 <div className="flex items-center gap-1">
                   <Calendar className="h-4 w-4" />
-                  <span>Joined {format(new Date("2023-06-15"), "MMMM yyyy")}</span>
+                  <span>Joined {format(joinedDate, "MMMM yyyy")}</span>
                 </div>
               </div>
             </div>
