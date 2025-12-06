@@ -276,29 +276,39 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
   }
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!moodboard || !e.target.files?.[0]) return
-    const file = e.target.files[0]
+    if (!moodboard || !e.target.files || e.target.files.length === 0) return
+    
+    const files = Array.from(e.target.files)
     try {
       setIsUploading(true)
-      const { url } = await uploadService.uploadImage(file)
-      // Calculate initial position (stagger new tiles)
-      const newPositionX = (tiles.length % 4) * 220 // Stagger horizontally
-      const newPositionY = Math.floor(tiles.length / 4) * 220 // Stagger vertically
       
-      const newTile = await tileService.create(moodboard.id, {
-        imageUrl: url,
-        caption: "",
-        tags: [],
-        positionX: newPositionX,
-        positionY: newPositionY,
-      })
-      setTiles([...tiles, newTile])
-      toast.success("Image uploaded successfully")
+      // Upload all images at once
+      const uploadedImages = await uploadService.uploadMultipleImages(files)
+      
+      // Create tiles for each uploaded image
+      const newTiles = await Promise.all(
+        uploadedImages.map(async (image, index) => {
+          // Calculate initial position (stagger new tiles)
+          const newPositionX = ((tiles.length + index) % 4) * 220 // Stagger horizontally
+          const newPositionY = Math.floor((tiles.length + index) / 4) * 220 // Stagger vertically
+          
+          return await tileService.create(moodboard!.id, {
+            imageUrl: image.url,
+            caption: "",
+            tags: [],
+            positionX: newPositionX,
+            positionY: newPositionY,
+          })
+        })
+      )
+      
+      setTiles([...tiles, ...newTiles])
+      toast.success(`${files.length} image${files.length > 1 ? 's' : ''} uploaded successfully`)
       // Refresh activity logs
       const logs = await activityLogService.getLogs(id, 1, 20)
       setActivityLogs(logs.logs)
     } catch (error: any) {
-      toast.error(error?.response?.data?.error || "Failed to upload image")
+      toast.error(error?.response?.data?.error || "Failed to upload images")
     } finally {
       setIsUploading(false)
       if (fileInputRef.current) {
@@ -391,6 +401,7 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleFileUpload}
                 className="hidden"
               />
@@ -539,9 +550,18 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
                 Upload images or add by URL to start building your moodboard
               </p>
               <div className="flex gap-2 mt-4">
-                <Button variant="outline" className="gap-2 bg-transparent">
-                  <Upload className="h-4 w-4" />
-                  Upload Image
+                <Button 
+                  variant="outline" 
+                  className="gap-2 bg-transparent"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                >
+                  {isUploading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="h-4 w-4" />
+                  )}
+                  Upload Image{isUploading ? 's' : ''}
                 </Button>
                 <Button onClick={() => setIsUrlDialogOpen(true)} className="gap-2">
                   <LinkIcon className="h-4 w-4" />

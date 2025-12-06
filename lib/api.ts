@@ -2,6 +2,7 @@ import axios from "axios"
 
 const api = axios.create({
   baseURL: "https://mood-board-backend-two.vercel.app/",
+  // baseURL: "http://localhost:3001/",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",

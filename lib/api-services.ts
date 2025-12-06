@@ -37,6 +37,10 @@ export interface UploadImageResponse {
   public_id: string
 }
 
+export interface UploadMultipleImagesResponse {
+  images: UploadImageResponse[]
+}
+
 export interface ActivityLogsResponse {
   logs: ActivityLog[]
   pagination: {
@@ -112,6 +116,19 @@ export const uploadService = {
       },
     })
     return response.data
+  },
+
+  async uploadMultipleImages(files: File[]): Promise<UploadImageResponse[]> {
+    const formData = new FormData()
+    files.forEach((file) => {
+      formData.append("images", file)
+    })
+    const response = await api.post<UploadMultipleImagesResponse>("/upload/images", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+    return response.data.images
   },
 
   async deleteImage(publicId: string): Promise<void> {
