@@ -8,6 +8,16 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { TileCard } from "@/components/tile-card"
 import { ActivityLog } from "@/components/activity-log"
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core"
+import { useDraggable } from "@dnd-kit/core"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import {
   Dialog,
@@ -36,6 +46,62 @@ import {
 } from "lucide-react"
 import { toast } from "react-hot-toast"
 import { Label } from "@/components/ui/label"
+import { cn } from "@/lib/utils"
+
+// Draggable Tile Component for Canvas
+function DraggableTileItem({
+  tile,
+  onDelete,
+  onUpdate,
+}: {
+  tile: Tile
+  onDelete?: (id: string) => void
+  onUpdate?: (tile: Tile) => void
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    isDragging,
+  } = useDraggable({
+    id: tile.id,
+  })
+
+  const style = transform
+    ? {
+        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
+      }
+    : undefined
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        position: 'absolute',
+        left: `${tile.positionX}px`,
+        top: `${tile.positionY}px`,
+        width: `${tile.width || 200}px`,
+        ...style,
+        zIndex: isDragging ? 50 : 1,
+        opacity: isDragging ? 0.8 : 1,
+      }}
+      className={cn(
+        isDragging && "ring-2 ring-primary ring-offset-2 rounded-lg shadow-2xl",
+        "cursor-grab active:cursor-grabbing"
+      )}
+      {...attributes}
+      {...listeners}
+    >
+      <TileCard
+        tile={tile}
+        editable
+        onDelete={onDelete}
+        onUpdate={onUpdate}
+      />
+    </div>
+  )
+}
 
 export default function EditMoodboardPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -52,6 +118,18 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
   const [copied, setCopied] = useState(false)
   const [isUrlDialogOpen, setIsUrlDialogOpen] = useState(false)
 
+  const [activeId, setActiveId] = useState<string | null>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+
+  // Drag and drop sensors for canvas
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px of movement before drag starts
+      },
+    })
+  )
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -61,7 +139,15 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
           activityLogService.getLogs(id, 1, 20).catch(() => ({ logs: [], pagination: { page: 1, limit: 20, total: 0, pages: 0 } }))
         ])
         setMoodboard(board)
-        setTiles(board.tiles || [])
+        // Ensure tiles have positions (default to 0,0 if not set)
+        const tilesWithPositions = (board.tiles || []).map((tile) => ({
+          ...tile,
+          positionX: tile.positionX ?? 0,
+          positionY: tile.positionY ?? 0,
+          width: tile.width ?? 200,
+          height: tile.height ?? 200,
+        }))
+        setTiles(tilesWithPositions)
         setActivityLogs(logs.logs)
       } catch (error: any) {
         toast.error(error?.response?.data?.error || "Failed to load board")
@@ -109,14 +195,71 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string)
+  }
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, delta } = event
+    setActiveId(null)
+
+    if (!moodboard || !delta) {
+      return
+    }
+
+    const tile = tiles.find((t) => t.id === active.id)
+    if (!tile) return
+
+    // Get canvas container position
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const canvasRect = canvas.getBoundingClientRect()
+    
+    // Calculate new position based on delta (movement)
+    const newPositionX = Math.max(0, tile.positionX + delta.x)
+    const newPositionY = Math.max(0, tile.positionY + delta.y)
+
+    // Update local state immediately for smooth UI
+    const updatedTile = {
+      ...tile,
+      positionX: newPositionX,
+      positionY: newPositionY,
+    }
+    
+    setTiles(tiles.map((t) => (t.id === tile.id ? updatedTile : t)))
+
+    // Save to backend
+    try {
+      await tileService.update(moodboard.id, tile.id, {
+        positionX: newPositionX,
+        positionY: newPositionY,
+      })
+      toast.success("Tile position updated")
+      // Refresh activity logs
+      const logs = await activityLogService.getLogs(id, 1, 20)
+      setActivityLogs(logs.logs)
+    } catch (error: any) {
+      // Revert on error
+      setTiles(tiles)
+      toast.error(error?.response?.data?.error || "Failed to update tile position")
+    }
+  }
+
   const handleAddByUrl = async () => {
     if (!moodboard || !imageUrl.trim()) return
     try {
       setIsUploading(true)
+      // Calculate initial position (stagger new tiles)
+      const newPositionX = (tiles.length % 4) * 220 // Stagger horizontally
+      const newPositionY = Math.floor(tiles.length / 4) * 220 // Stagger vertically
+      
       const newTile = await tileService.create(moodboard.id, {
         imageUrl: imageUrl.trim(),
         caption: "",
         tags: [],
+        positionX: newPositionX,
+        positionY: newPositionY,
       })
       setTiles([...tiles, newTile])
       setImageUrl("")
@@ -138,10 +281,16 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
     try {
       setIsUploading(true)
       const { url } = await uploadService.uploadImage(file)
+      // Calculate initial position (stagger new tiles)
+      const newPositionX = (tiles.length % 4) * 220 // Stagger horizontally
+      const newPositionY = Math.floor(tiles.length / 4) * 220 // Stagger vertically
+      
       const newTile = await tileService.create(moodboard.id, {
         imageUrl: url,
         caption: "",
         tags: [],
+        positionX: newPositionX,
+        positionY: newPositionY,
       })
       setTiles([...tiles, newTile])
       toast.success("Image uploaded successfully")
@@ -343,14 +492,43 @@ export default function EditMoodboardPage({ params }: { params: Promise<{ id: st
           </div>
         </div>
 
-        {/* Tiles Editor */}
+        {/* Canvas Editor */}
         <div className="flex-1 overflow-auto p-4">
           {tiles.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-              {tiles.map((tile) => (
-                <TileCard key={tile.id} tile={tile} editable onDelete={handleDeleteTile} onUpdate={handleUpdateTile} />
-              ))}
-            </div>
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <div
+                ref={canvasRef}
+                className="relative w-full min-h-[600px] bg-muted/20 rounded-lg border-2 border-dashed border-border"
+                style={{ 
+                  position: 'relative',
+                  minHeight: '600px',
+                  height: '100%',
+                }}
+              >
+                {tiles.map((tile) => (
+                  <DraggableTileItem
+                    key={tile.id}
+                    tile={tile}
+                    onDelete={handleDeleteTile}
+                    onUpdate={handleUpdateTile}
+                  />
+                ))}
+              </div>
+              <DragOverlay>
+                {activeId ? (
+                  <div className="opacity-50">
+                    <TileCard
+                      tile={tiles.find((t) => t.id === activeId)!}
+                      editable
+                    />
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">

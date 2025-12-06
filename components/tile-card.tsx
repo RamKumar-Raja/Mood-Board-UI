@@ -53,8 +53,8 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
       )}
     >
       {editable && (
-        <div className="absolute top-2 left-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-          <div className="p-1.5 rounded-md glass">
+        <div className="absolute top-2 left-2 z-30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+          <div className="p-1.5 rounded-md glass bg-background/80 backdrop-blur-sm border border-border/50">
             <GripVertical className="h-4 w-4 text-foreground/70" />
           </div>
         </div>
@@ -64,8 +64,11 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
         <Button
           variant="destructive"
           size="icon"
-          className="absolute top-2 right-2 z-10 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={() => onDelete(tile.id)}
+          className="absolute top-2 right-2 z-20 h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+          onClick={(e) => {
+            e.stopPropagation()
+            onDelete(tile.id)
+          }}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -85,8 +88,30 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
           <div className="flex items-center gap-2">
             {isEditingCaption ? (
               <>
-                <Input value={caption} onChange={(e) => setCaption(e.target.value)} className="h-8 text-sm" autoFocus />
-                <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={handleSaveCaption}>
+                <Input 
+                  value={caption} 
+                  onChange={(e) => setCaption(e.target.value)} 
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      handleSaveCaption()
+                    } else if (e.key === "Escape") {
+                      setCaption(tile.caption || "")
+                      setIsEditingCaption(false)
+                    }
+                  }}
+                  onBlur={handleSaveCaption}
+                  className="h-8 text-sm" 
+                  autoFocus 
+                />
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-8 w-8 shrink-0 pointer-events-auto" 
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleSaveCaption()
+                  }}
+                >
                   <Check className="h-4 w-4" />
                 </Button>
               </>
@@ -96,8 +121,11 @@ export function TileCard({ tile, onDelete, onUpdate, editable = false, className
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => setIsEditingCaption(true)}
+                  className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsEditingCaption(true)
+                  }}
                 >
                   <Edit2 className="h-3 w-3" />
                 </Button>

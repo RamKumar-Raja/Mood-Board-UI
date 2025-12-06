@@ -126,11 +126,27 @@ export default function PublicMoodboardPage({ params }: { params: Promise<{ id: 
         </div>
       </div>
 
-      {/* Tiles Grid */}
+      {/* Tiles Canvas */}
       {moodboard.tiles && moodboard.tiles.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        <div 
+          className="relative w-full min-h-[600px] bg-muted/20 rounded-lg border-2 border-dashed border-border"
+          style={{ 
+            position: 'relative',
+            minHeight: '600px',
+          }}
+        >
           {moodboard.tiles.map((tile) => (
-            <TileCard key={tile.id} tile={tile} editable={false} />
+            <div
+              key={tile.id}
+              style={{
+                position: 'absolute',
+                left: `${tile.positionX || 0}px`,
+                top: `${tile.positionY || 0}px`,
+                width: `${tile.width || 200}px`,
+              }}
+            >
+              <TileCard tile={tile} editable={false} />
+            </div>
           ))}
         </div>
       ) : (
